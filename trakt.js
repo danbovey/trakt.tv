@@ -1,16 +1,14 @@
 'use strict';
 
 // requirejs modules
-const got = require('got');
+const request = require('superagent');
 const crypto = require('crypto');
 const methods = require('./methods.json');
 const sanitizer = require('sanitizer').sanitize;
-const pkg = require('./package.json');
 
 // default settings
 const defaultUrl = 'https://api.trakt.tv';
 const redirectUrn = 'urn:ietf:wg:oauth:2.0:oob';
-const defaultUa = `${pkg.name}/${pkg.version} (NodeJS; +${pkg.repository.url})`;
 
 module.exports = class Trakt {
     constructor(settings = {}, debug) {
@@ -23,8 +21,7 @@ module.exports = class Trakt {
             redirect_uri: settings.redirect_uri || redirectUrn,
             debug: settings.debug || debug,
             endpoint: settings.api_url || defaultUrl,
-            pagination: settings.pagination,
-            useragent: settings.useragent || defaultUa
+            pagination: settings.pagination
         };
 
         this._construct();
@@ -76,24 +73,25 @@ module.exports = class Trakt {
             method: 'POST',
             url: `${this._settings.endpoint}/oauth/token`,
             headers: {
-                'User-Agent': this._settings.useragent,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(str)
+            body: str
         };
 
         this._debug(req);
-        return got(req.url, req).then(response => {
-            const body = JSON.parse(response.body);
-
-            this._authentication.refresh_token = body.refresh_token;
-            this._authentication.access_token = body.access_token;
-            this._authentication.expires = (body.created_at + body.expires_in) * 1000;
-
-            return this._sanitize(body);
-        }).catch(error => {
-            throw (error.response && error.response.statusCode == 401) ? Error(error.response.headers['www-authenticate']) : error;
-        });
+        return request(req.method, req.url)
+            .set(req.headers)
+            .send(req.body)
+            .then(response => {
+                const body = response.body;
+                this._authentication.refresh_token = body.refresh_token;
+                this._authentication.access_token = body.access_token;
+                this._authentication.expires = (body.created_at + body.expires_in) * 1000;
+                
+                return this._sanitize(body);
+            }).catch(error => {
+                throw (error.response && error.response.statusCode == 401) ? Error(error.response.headers['www-authenticate']) : error;
+            });
     }
 
     // De-authentication POST
@@ -102,7 +100,6 @@ module.exports = class Trakt {
             method: 'POST',
             url: `${this._settings.endpoint}/oauth/revoke`,
             headers: {
-                'User-Agent': this._settings.useragent,
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'Authorization' : `Bearer ${this._authentication.access_token}`,
                 'trakt-api-version': '2',
@@ -111,7 +108,9 @@ module.exports = class Trakt {
             body: `token=[${this._authentication.access_token}]`
         };
         this._debug(req);
-        got(req.url, req);
+        request(req.method, req.url)
+            .set(req.headers)
+            .send(req.body);
     }
 
     // Get code to paste on login screen
@@ -120,16 +119,19 @@ module.exports = class Trakt {
             method: 'POST',
             url: `${this._settings.endpoint}/oauth/device/${type}`,
             headers: {
-                'User-Agent': this._settings.useragent,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(str)
+            body: str
         };
 
         this._debug(req);
-        return got(req.url, req).then(response => this._sanitize(JSON.parse(response.body))).catch(error => {
-            throw (error.response && error.response.statusCode == 401) ? Error(error.response.headers['www-authenticate']) : error;
-        });
+        return request(req.method, req.url)
+            .set(req.headers)
+            .send(req.body)
+            .then(response => this._sanitize(response.body))
+            .catch(error => {
+                throw (error.response && error.response.statusCode == 401) ? Error(error.response.headers['www-authenticate']) : error;
+            });
     }
 
     // Parse url before api call
@@ -192,13 +194,14 @@ module.exports = class Trakt {
 
     // Parse methods then hit trakt
     _call(method, params) {
-        if (method.opts['auth'] === true && (!this._authentication.access_token || !this._settings.client_secret)) throw Error('OAuth required');
+        if (method.opts['auth'] === true && (!this._authentication.access_token || !this._settings.client_secret)) {
+            return Promise.reject('OAuth required');
+        }
 
         const req = {
             method: method.method,
             url: this._parse(method, params),
             headers: {
-                'User-Agent': this._settings.useragent,
                 'Content-Type': 'application/json',
                 'trakt-api-version': '2',
                 'trakt-api-key': this._settings.client_id
@@ -218,14 +221,17 @@ module.exports = class Trakt {
         req.body = JSON.stringify(req.body);
 
         this._debug(req);
-        return got(req.url, req).then(response => this._parseResponse(method, params, response));
+        return request(req.method, req.url)
+            .set(req.headers)
+            .send(req.body)
+            .then(response => this._parseResponse(method, params, response));
     }
 
     // Parse trakt response: pagination & stuff
     _parseResponse (method, params, response) {
         if (!response.body) return response.body;
 
-        const data = JSON.parse(response.body);
+        const data = response.body;
         let parsed = data;
 
         if ((params && params.pagination) || this._settings.pagination) {
@@ -288,7 +294,9 @@ module.exports = class Trakt {
 
     // Verify code; optional state
     exchange_code(code, state) {
-        if (state && state != this._authentication.state) throw Error('Invalid CSRF (State)');
+        if (state && state != this._authentication.state) {
+            return Promise.reject('Invalid CSRF (State)');
+        }
 
         return this._exchange({
             code: code,
@@ -308,7 +316,9 @@ module.exports = class Trakt {
 
     // Calling trakt on a loop until it sends back a token
     poll_access(poll) {
-        if (!poll || (poll && poll.constructor !== Object)) throw Error('Invalid Poll object');
+        if (!poll || (poll && poll.constructor !== Object)) {
+            return Promise.reject('Invalid Poll object');
+        }
 
         const begin = Date.now();
 
