@@ -8,7 +8,7 @@
         "wrapper",
         "node"
     ],
-    "main": "trakt.js",
+    "main": "dist/index.js",
     "author": "Jean van Kasteel",
     "license": "MIT",
     "repository": {
@@ -19,10 +19,15 @@
         "url": "https://github.com/vankasteelj/trakt.tv/issues"
     },
     "dependencies": {
+        "randombytes": "^2.0.6",
         "sanitizer": "0.x.x",
         "superagent": "^3.8.2"
     },
     "scripts": {
+        "build": "rollup src/index.js --format umd --name 'trakt.tv' --file dist/index.js",
         "docs": "node docs/methods-generator"
+    },
+    "devDependencies": {
+        "babel-loader": "^7.1.4"
     }
 }
