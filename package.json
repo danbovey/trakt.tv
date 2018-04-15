@@ -24,7 +24,7 @@
         "superagent": "^3.8.2"
     },
     "scripts": {
-        "build": "rollup src/index.js --format umd --name 'trakt.tv' --file dist/index.js",
+        "build": "rollup -c",
         "docs": "node docs/methods-generator"
     },
     "devDependencies": {
