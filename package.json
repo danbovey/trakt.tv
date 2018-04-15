@@ -28,6 +28,10 @@
         "docs": "node docs/methods-generator"
     },
     "devDependencies": {
-        "babel-loader": "^7.1.4"
+        "babel-core": "^6.26.0",
+        "babel-loader": "^7.1.4",
+        "babel-preset-env": "^1.6.1",
+        "rollup": "^0.57.1",
+        "rollup-plugin-babel": "^3.0.3"
     }
 }
